@@ -75,6 +75,7 @@ class DeepLocModel(nn.Module):
         self.fc1 = nn.Linear(n_hid * 2, n_hid * 2)
         self.fc2 = nn.Linear(n_hid * 2, n_class) # Predict location
 
+        self.fc_membrane = nn.Linear(n_hid * 2, 1)  # Membrane-bound classifier (binary)
         self.drop_hid = nn.Dropout(drop_hid)
 
     def forward(self, x, mask):
@@ -90,6 +91,9 @@ class DeepLocModel(nn.Module):
         alphas, contexts = self.attention(packed_out, mask)
         last_context = contexts[:, -1, :]
 
+        # Membrane-bound vs soluble prediction (binary classifier)
+        membrane_out = torch.sigmoid(self.fc_membrane(self.drop_hid(last_context))) 
+
         out = F.relu(self.fc1(self.drop_hid(last_context)))
         out = self.fc2(self.drop_hid(out))
-        return out, alphas, last_context
+        return out, alphas, last_context, membrane_out

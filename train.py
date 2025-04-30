@@ -37,7 +37,6 @@ X_train, y_train, mask_train = train_data['X_train'], train_data['y_train'], tra
 
 X_test, y_test, mask_test = test_data['X_test'], test_data['y_test'], test_data['mask_test']
 
-
 # === Convert to PyTorch Tensors ===
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train, dtype=torch.long)
@@ -110,7 +109,7 @@ for epoch in range(int(args.epochs)):
                                       targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
                                       masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-            outputs, attention, context = model(inputs, masks)
+            outputs, attention, context, membrane_out = model(inputs, masks)
             loss = criterion(outputs, targets)
             val_loss += loss.item()
 
