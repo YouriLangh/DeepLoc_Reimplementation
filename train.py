@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from model import DeepLocModel
 from tqdm import tqdm
 from confusionmatrix import ConfusionMatrix 
+from metrics_mc import gorodkin
 
 
 # === Argument Parsing ===
@@ -33,9 +34,13 @@ test_data = np.load(args.testset)
 
 # As sequences can be variable length, the dataset has to pad certain sequences. But our attention mechanism/ LSTM cell should not learn from padding
 # Mask ensures we know which positions are padding and which are not (1 = not padding, 0 = padding)
-X_train, y_train, mask_train = train_data['X_train'], train_data['y_train'], train_data['mask_train']
+X_train, y_train, mask_train = train_data['X_train'][:50], train_data['y_train'][:50], train_data['mask_train'][:50]
 
-X_test, y_test, mask_test = test_data['X_test'], test_data['y_test'], test_data['mask_test']
+X_test, y_test, mask_test = test_data['X_test'][:50], test_data['y_test'][:50], test_data['mask_test'][:50]
+
+print(f"Training data shape: {X_train.shape}, Labels shape: {y_train.shape}, Mask shape: {mask_train.shape}")
+print(f"Test data shape: {X_test.shape}, Labels shape: {y_test.shape}, Mask shape: {mask_test.shape}")
+
 
 # === Convert to PyTorch Tensors ===
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
@@ -80,7 +85,7 @@ for epoch in range(int(args.epochs)):
         optimizer.zero_grad()
         
         # Forward pass
-        outputs, attention, context = model(inputs, masks)
+        outputs, attention, context, membrane_out = model(inputs, masks)
         
         # Compute loss
         loss = criterion(outputs, targets)
@@ -129,8 +134,15 @@ for epoch in range(int(args.epochs)):
 model.eval()
 test_preds = []
 test_labels = []
-class_names = ['Nucleus', 'Cytoplasm', 'Extracellular', 'Mitochondrion', 'Cell membrane','Endoplasmic reticulum' ,'Plastid', 'Golgi apparatus', 'Lysosome/Vacuole', 'Peroxisome' ]
+membrane_preds = []
+class_names = ['Nucleus', 'Cytoplasm', 'Extracellular', 'Mitochondrion', 'Cell membrane', 'Endoplasmic reticulum', 
+               'Plastid', 'Golgi apparatus', 'Lysosome/Vacuole', 'Peroxisome']
 conf = ConfusionMatrix(num_classes=10, class_names=class_names)
+
+conf_membrane = ConfusionMatrix(num_classes=2, class_names=['Membrane Bound', 'Soluble'])
+# Variables to store metrics
+all_membrane_preds = []
+all_membrane_true = []
 
 with torch.no_grad():
     for batch in test_loader:
@@ -139,22 +151,45 @@ with torch.no_grad():
                                   targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
                                   masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        outputs, _, _ = model(inputs, masks)
+        # Forward pass through the model
+        outputs, _, _, membrane_out = model(inputs, masks)
+        
+        # Predict the class and collect predictions for evaluation
         _, predicted = torch.max(outputs, 1)
         test_preds.extend(predicted.cpu().numpy())
         test_labels.extend(targets.cpu().numpy())
-        conf.batch_add(
-    targets.cpu().numpy(),
-    predicted.cpu().numpy()
-)
+        
+        membrane_pred = (membrane_out > 0.5).float()
+        # Collect membrane predictions and ground truth
+        all_membrane_preds.extend(membrane_pred.cpu().numpy())
+        all_membrane_true.extend(targets.cpu().numpy())  # Assuming the target class for membrane prediction is in the targets
+        
+        # Update confusion matrix
+        conf.batch_add(targets.cpu().numpy(), predicted.cpu().numpy())
+        conf_membrance.batch_add(targets.cpu().numpy(), membrane_pred.cpu().numpy())
 
-
+# === Compute and Print Metrics for localization ===
 # Compute confusion matrix and final accuracy
 print("Confusion Matrix:")
 print(conf)
 
-print(f"Global Accuracy: {conf.accuracy() * 100:.2f}%")
-print(f"F1 per class: {conf.F1()}")
-print(f"Matthews Correlation Coefficient per class: {conf.matthews_correlation()}")
+# Calculate Accuracy
+accuracy = conf.accuracy() * 100
+print(f"Global Accuracy: {accuracy:.2f}%")
+
+# Calculate F1 and MCC
+f1 = conf.F1()
+print(f"F1 per class: {f1}")
+
+mcc = conf.matthews_correlation()
+print(f"Matthews Correlation Coefficient per class: {mcc}")
 print(f"Overall MCC: {conf.OMCC()}")
+
+
+# === Compute Gorodkin Score ===
+# For Gorodkin score, we will use the true labels and membrane predictions to compute the score
+membrane_true = np.array(all_membrane_true)
+membrane_pred = np.array(all_membrane_preds)
+gorodkin_score = gorodkin((membrane_true, membrane_pred))
+print(f"Gorodkin Score: {gorodkin_score:.4f}")
 

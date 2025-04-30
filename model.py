@@ -72,6 +72,7 @@ class DeepLocModel(nn.Module):
         self.blstm = nn.LSTM(64, n_hid, bidirectional=True, batch_first=True)
         self.attention = DeepLocAttention(n_hid * 2, n_hid * 2, n_hid, decode_steps=10)
 
+        # TODO: Use a tree structure for the fully connected layers predicting location
         self.fc1 = nn.Linear(n_hid * 2, n_hid * 2)
         self.fc2 = nn.Linear(n_hid * 2, n_class) # Predict location
 
