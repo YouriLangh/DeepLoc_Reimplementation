@@ -1,191 +1,161 @@
-import os
-import sys
-import numpy as np
-import theano
-import theano.tensor as T
-import time
-import lasagne
 import argparse
-from metrics_mc import *
-from model import neural_network
-from confusionmatrix import ConfusionMatrix
-from utils import iterate_minibatches
+import time
+import torch
+import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
+from model import DeepLocModel
+from tqdm import tqdm
+from confusionmatrix import ConfusionMatrix 
 
+
+# === Argument Parsing ===
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', '--trainset',  help="npz file with traning profiles data")
-parser.add_argument('-t', '--testset',  help="npz file with test profiles data to calculate final accuracy")
-parser.add_argument('-bs', '--batch_size',  help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs',  help="Number of training epochs, default = 200", default=200)
-parser.add_argument('-n', '--n_filters',  help="Number of filters, default = 10", default=10)
-parser.add_argument('-lr', '--learning_rate',  help="Learning rate, default = 0.0005", default=0.0005)
-parser.add_argument('-id', '--in_dropout',  help="Input dropout, default = 0.2", default=0.2)
-parser.add_argument('-hd', '--hid_dropout',  help="Hidden layers dropout, default = 0.5", default=0.5)
-parser.add_argument('-hn', '--n_hid',  help="Number of hidden units, default = 256", default=256)
-parser.add_argument('-se', '--seed',  help="Seed for random number init., default = 123456", default=123456)
+parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
+parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
+parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=5) #200 normally
+parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=10)
+parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0005)
+parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
+parser.add_argument('-hd', '--hid_dropout', help="Hidden layers dropout, default = 0.5", default=0.5)
+parser.add_argument('-hn', '--n_hid', help="Number of hidden units, default = 256", default=256)
+parser.add_argument('-se', '--seed', help="Seed for random number init., default = 123456", default=123456)
 args = parser.parse_args()
 
-if args.trainset == None or args.testset == None:
+# === Check for Data Files ===
+if args.trainset is None or args.testset is None:
     parser.print_help()
-    sys.stderr.write("Please specify training and test data file!\n")
-    sys.exit(1)
+    exit(1)
 
-# Input options
-n_class = 10
-batch_size = int(args.batch_size)
-seq_len = 1000
-n_hid = int(args.n_hid)
-lr = float(args.learning_rate)
-num_epochs = int(args.epochs)
-drop_per = float(args.in_dropout)
-drop_hid = float(args.hid_dropout)
-n_filt = int(args.n_filters)
-
-theano.config.floatX = 'float32'
-lasagne.random.set_rng(np.random.RandomState(seed=int(args.seed)))
-np.random.seed(seed=int(args.seed))
-
-# Load data
-print("Loading data...\n")
-test_data = np.load(args.testset)
+# === Load the Data ===
 train_data = np.load(args.trainset)
+test_data = np.load(args.testset)
 
-# Test set
-X_test = test_data['X_test']
-y_test = test_data['y_test']
-mask_test = test_data['mask_test']
+# As sequences can be variable length, the dataset has to pad certain sequences. But our attention mechanism/ LSTM cell should not learn from padding
+# Mask ensures we know which positions are padding and which are not (1 = not padding, 0 = padding)
+X_train, y_train, mask_train = train_data['X_train'], train_data['y_train'], train_data['mask_train']
 
-# Initialize output vectors from test set
-complete_alpha = np.zeros((X_test.shape[0], seq_len))
-complete_context = np.zeros((X_test.shape[0], n_hid * 2))
-complete_test = np.zeros((X_test.shape[0], n_class))
+X_test, y_test, mask_test = test_data['X_test'], test_data['y_test'], test_data['mask_test']
 
-# Training set
-X_train = train_data['X_train']
-y_train = train_data['y_train']
-mask_train = train_data['mask_train']
-partition = train_data['partition']
 
-# Number of features
-n_feat = np.shape(X_test)[2]
+# === Convert to PyTorch Tensors ===
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+mask_train_tensor = torch.tensor(mask_train, dtype=torch.float32)
 
-# Training
-for i in range(1, 5):
-    # Network compilation
-    print("Compilation model {}\n".format(i))
-    train_fn, val_fn, network_out = neural_network(batch_size, n_hid, n_feat, n_class, lr, drop_per, drop_hid, n_filt)
+X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+mask_test_tensor = torch.tensor(mask_test, dtype=torch.float32)
 
-    # Train and validation sets
-    train_index = np.where(partition != i)
-    val_index = np.where(partition == i)
-    X_tr = X_train[train_index].astype(np.float32)
-    X_val = X_train[val_index].astype(np.float32)
-    y_tr = y_train[train_index].astype(np.int32)
-    y_val = y_train[val_index].astype(np.int32)
-    mask_tr = mask_train[train_index].astype(np.float32)
-    mask_val = mask_train[val_index].astype(np.float32)
+# === Create DataLoader for Batching ===
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor, mask_train_tensor)
+train_loader = DataLoader(train_dataset, batch_size=int(args.batch_size), shuffle=True)
 
-    print("Validation shape: {}".format(X_val.shape))
-    print("Training shape: {}".format(X_tr.shape))
+test_dataset = TensorDataset(X_test_tensor, y_test_tensor, mask_test_tensor)
+test_loader = DataLoader(test_dataset, batch_size=int(args.batch_size), shuffle=False)
 
-    eps = []
-    best_val_acc = 0
+# === Initialize the Model ===
+model = DeepLocModel(n_feat=X_train.shape[2], n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
+                     drop_per=float(args.in_dropout), drop_hid=float(args.hid_dropout))
+model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))  # Move model to GPU if available
 
-    print("Start training\n")
-    for epoch in range(num_epochs):
-        # Calculate epoch time
-        start_time = time.time()
+# === Define Loss Function and Optimizer ===
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
 
-        # Full pass training set
-        train_err = 0
-        train_batches = 0
-        confusion_train = ConfusionMatrix(n_class)
+# === Training Loop ===
+for epoch in range(int(args.epochs)):
+    model.train()
+    running_loss = 0.0
+    correct_preds = 0
+    total_preds = 0
+    start_time = time.time()
 
-        # Generate minibatches and train on each one of them
-        for batch in iterate_minibatches(X_tr, y_tr, mask_tr, batch_size, shuffle=True):
-            inputs, targets, in_masks = batch
-            tr_err, predict = train_fn(inputs, targets, in_masks)
-            train_err += tr_err
-            train_batches += 1
-            preds = np.argmax(predict, axis=-1)
-            confusion_train.batch_add(targets, preds)
+    # Train on minibatches
+    for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.epochs}", unit="batch"):
+        inputs, targets, masks = batch
+        inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                  targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                  masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        train_loss = train_err / train_batches
-        train_accuracy = confusion_train.accuracy()
-        cf_train = confusion_train.ret_mat()
+        optimizer.zero_grad()
+        
+        # Forward pass
+        outputs, attention, context = model(inputs, masks)
+        
+        # Compute loss
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
 
-        # Full pass validation set
-        val_err = 0
-        val_batches = 0
-        confusion_valid = ConfusionMatrix(n_class)
+        running_loss += loss.item()
 
-        for batch in iterate_minibatches(X_val, y_val, mask_val, batch_size):
-            inputs, targets, in_masks = batch
-            err, predict_val, alpha, context = val_fn(inputs, targets, in_masks)
-            val_err += err
-            val_batches += 1
-            preds = np.argmax(predict_val, axis=-1)
-            confusion_valid.batch_add(targets, preds)
+        # Compute accuracy
+        _, predicted = torch.max(outputs, 1)
+        correct_preds += (predicted == targets).sum().item()
+        total_preds += targets.size(0)
 
-        val_loss = val_err / val_batches
-        val_accuracy = confusion_valid.accuracy()
-        cf_val = confusion_valid.ret_mat()
+    epoch_loss = running_loss / len(train_loader)
+    epoch_acc = correct_preds / total_preds * 100
 
-        f_val_acc = val_accuracy
+    # === Validation ===
+    model.eval()
+    val_loss = 0.0
+    val_correct_preds = 0
+    val_total_preds = 0
+    with torch.no_grad():
+        for batch in test_loader:
+            inputs, targets, masks = batch
+            inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                      targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                      masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        # Full pass test set if validation accuracy is higher
-        if f_val_acc >= best_val_acc:
+            outputs, attention, context = model(inputs, masks)
+            loss = criterion(outputs, targets)
+            val_loss += loss.item()
 
-            test_batches = 0
-            # Matrices to store all output information
-            test_alpha = np.array([], dtype=np.float32).reshape(0, seq_len)
-            test_context = np.array([], dtype=np.float32).reshape(0, n_hid * 2)
-            test_pred = np.array([], dtype=np.float32).reshape(0, n_class)
+            _, predicted = torch.max(outputs, 1)
+            val_correct_preds += (predicted == targets).sum().item()
+            val_total_preds += targets.size(0)
 
-            for batch in iterate_minibatches(X_test, y_test, mask_test, batch_size, shuffle=False, sort_len=False):
-                inputs, targets, in_masks = batch
-                err, net_out, alpha, context = val_fn(inputs, targets, in_masks)
+    val_loss /= len(test_loader)
+    val_acc = val_correct_preds / val_total_preds * 100
 
-                test_batches += 1
-                last_alpha = alpha[:, -1:, :].reshape((batch_size, seq_len))
-                test_alpha = np.concatenate((test_alpha, last_alpha), axis=0)
-                test_context = np.concatenate((test_context, context), axis=0)
-                test_pred = np.concatenate((test_pred, net_out), axis=0)
+    # === Print Epoch Results ===
+    print(f"Training loss: {epoch_loss:.4f}, Training accuracy: {epoch_acc:.2f}%")
+    print(f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.2f}%")
+    print(f"Epoch time: {time.time() - start_time:.3f}s")
 
-            best_val_acc = f_val_acc
+# === Final Testing ===
+model.eval()
+test_preds = []
+test_labels = []
+class_names = ['Nucleus', 'Cytoplasm', 'Extracellular', 'Mitochondrion', 'Cell membrane','Endoplasmic reticulum' ,'Plastid', 'Golgi apparatus', 'Lysosome/Vacuole', 'Peroxisome' ]
+conf = ConfusionMatrix(num_classes=10, class_names=class_names)
 
-        eps += [epoch]
+with torch.no_grad():
+    for batch in test_loader:
+        inputs, targets, masks = batch
+        inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                  targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
+                                  masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
-        # Then we print the results for this epoch:
-        print("Epoch {} of {} took {:.3f}s".format(epoch + 1, num_epochs, time.time() - start_time))
-        print(confusion_valid)
-        print("  training loss:\t\t{:.6f}".format(train_loss))
-        print("  validation loss:\t\t{:.6f}".format(val_loss))
-        print("  training accuracy:\t\t{:.2f} %".format(train_accuracy * 100))
-        print("  validation accuracy:\t\t{:.2f} %".format(val_accuracy * 100))
-        print("  training Gorodkin:\t\t{:.2f}".format(gorodkin(cf_train)))
-        print("  validation Gorodkin:\t\t{:.2f}".format(gorodkin(cf_val)))
-        print("  training IC:\t\t{:.2f}".format(IC(cf_train)))
-        print("  validation IC:\t\t{:.2f}".format(IC(cf_val)))
+        outputs, _, _ = model(inputs, masks)
+        _, predicted = torch.max(outputs, 1)
+        test_preds.extend(predicted.cpu().numpy())
+        test_labels.extend(targets.cpu().numpy())
+        conf.batch_add(
+    targets.cpu().numpy(),
+    predicted.cpu().numpy()
+)
 
-    # Output matrices test set are summed at the end of each training
-    complete_test += test_pred[:X_test.shape[0]]
-    complete_context += test_context[:X_test.shape[0]]
-    complete_alpha += test_alpha[:X_test.shape[0]]
 
-# The test output from the 4 trainings is averaged
-test_softmax = complete_test / 4.0
-context_vectors = complete_context / 4.0
-alpha_weight = complete_alpha / 4.0
+# Compute confusion matrix and final accuracy
+print("Confusion Matrix:")
+print(conf)
 
-# Final test accuracy and confusion matrix
-confusion_test = ConfusionMatrix(n_class)
-loc_pred = np.argmax(test_softmax, axis=-1)
-confusion_test.batch_add(y_test, loc_pred)
-test_accuracy = confusion_test.accuracy()
-cf_test = confusion_test.ret_mat()
+print(f"Global Accuracy: {conf.accuracy() * 100:.2f}%")
+print(f"F1 per class: {conf.F1()}")
+print(f"Matthews Correlation Coefficient per class: {conf.matthews_correlation()}")
+print(f"Overall MCC: {conf.OMCC()}")
 
-print("FINAL TEST RESULTS")
-print(confusion_test)
-print("  test accuracy:\t\t{:.2f} %".format(test_accuracy * 100))
-print("  test Gorodkin:\t\t{:.2f}".format(gorodkin(cf_test)))
-print("  test IC:\t\t{:.2f}".format(IC(cf_test)))

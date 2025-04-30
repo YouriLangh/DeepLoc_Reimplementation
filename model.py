@@ -15,7 +15,7 @@ class DropoutSeqPos(nn.Module):
         mask = (torch.rand(x.size(0), x.size(1), device=x.device) > self.p).float() #generates a random mask for sequence if training
         return x * mask.unsqueeze(-1)
 
-### Attention mechanism: decides which parts are more important
+### Attention mechanism: Focus on the most relevant parts of the sequence
 class DeepLocAttention(nn.Module):
     def __init__(self, input_dim, hidden_dim, align_dim, decode_steps):
         super(DeepLocAttention, self).__init__()
@@ -42,17 +42,17 @@ class DeepLocAttention(nn.Module):
 
         for _ in range(self.decode_steps):
             W_align_out = self.W_align(h_t).unsqueeze(1)
-            scores = self.v_align(torch.tanh(W_align_out + U_align_out)).squeeze(-1)
+            scores = self.v_align(torch.tanh(W_align_out + U_align_out)).squeeze(-1) # Scores for each position
 
             scores = scores.masked_fill(mask == 0, float('-inf'))
-            alpha = torch.softmax(scores, dim=1)
-            context = torch.sum(encoded * alpha.unsqueeze(-1), dim=1)
+            alpha = torch.softmax(scores, dim=1) # how much attention should be given to each position
+            context = torch.sum(encoded * alpha.unsqueeze(-1), dim=1) # Use attention weights to get weighted context vector 
 
-            h_t, c_t = self.lstm_cell(context, (h_t, c_t))
+            h_t, c_t = self.lstm_cell(context, (h_t, c_t)) # Pass the context vector to the LSTM cell
             alpha_list.append(alpha)
             context_list.append(context)
 
-        alphas = torch.stack(alpha_list, dim=1)
+        alphas = torch.stack(alpha_list, dim=1) # Attention weights
         contexts = torch.stack(context_list, dim=1)
 
         return alphas, contexts
@@ -66,14 +66,14 @@ class DeepLocModel(nn.Module):
         self.cnn_layers = nn.ModuleList([
             nn.Conv1d(n_feat, n_filt, kernel_size=k, padding=k // 2)
             for k in [1, 3, 5, 9, 15, 21]
-        ])
-        self.cnn_out = nn.Conv1d(n_filt * 6, 64, kernel_size=3, padding=1)
+        ]) # Different filters as stated in paper
+        self.cnn_out = nn.Conv1d(n_filt * 6, 64, kernel_size=3, padding=1) # Reduce dimensionality
 
         self.blstm = nn.LSTM(64, n_hid, bidirectional=True, batch_first=True)
         self.attention = DeepLocAttention(n_hid * 2, n_hid * 2, n_hid, decode_steps=10)
 
         self.fc1 = nn.Linear(n_hid * 2, n_hid * 2)
-        self.fc2 = nn.Linear(n_hid * 2, n_class)
+        self.fc2 = nn.Linear(n_hid * 2, n_class) # Predict location
 
         self.drop_hid = nn.Dropout(drop_hid)
 
