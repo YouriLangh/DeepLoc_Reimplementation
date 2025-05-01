@@ -22,4 +22,4 @@ pip install -r requirements.txt
 1. The original model uses Lasagne, which has poor support with non-Unix environment, rendering it nearly impossible for us to run.
    This is why we decided to re-implement the model ourselves in PyTorch
 
-2. The dataset provided for any of the models shows discrepancies with the amount of data in mentioned in the paper. The gap in the size of the dataset from DeepLoc 1.0 is atleast 40% smaller than the one mentioned in their paper. For this reason, we decided to use the dataset from Deeploc 2.0 / 2.1.
+2. Using the DeepLoc 1.0 dataset required to ensure "stringent" homology partitioning. As we did not know how to do this, we used the 2.1 dataset which already does this partitioning for us.
