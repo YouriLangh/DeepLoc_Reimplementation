@@ -50,7 +50,7 @@ torch.manual_seed(int(args.seed))
 np.random.seed(int(args.seed))
 
 # === Initialize the Model ===
-model = DeepLocModel(n_feat=X_train.shape[2], n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
+model = DeepLocModel(n_feat=20, n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
                      drop_per=float(args.in_dropout), drop_hid=float(args.hid_dropout))
 model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))  # Move model to GPU if available
 
