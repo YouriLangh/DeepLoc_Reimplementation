@@ -57,7 +57,6 @@ class DeepLocAttention(nn.Module):
 
         return alphas, contexts
 
-
 class DeepLocModel(nn.Module):
     def __init__(self, n_feat, n_class, n_hid=256, n_filt=10, drop_per=0.2, drop_hid=0.5):
         super(DeepLocModel, self).__init__()
@@ -71,11 +70,8 @@ class DeepLocModel(nn.Module):
 
         self.blstm = nn.LSTM(64, n_hid, bidirectional=True, batch_first=True)
         self.attention = DeepLocAttention(n_hid * 2, n_hid * 2, n_hid, decode_steps=10)
-
-        # TODO: Use a tree structure for the fully connected layers predicting location
-        self.fc1 = nn.Linear(n_hid * 2, n_hid * 2)
-        self.fc2 = nn.Linear(n_hid * 2, n_class) # Predict location
-
+        # Correction: DeepLoc 1.0 uses the tree only to explain predictions, not to make them.
+        self.output_layer = nn.Linear(n_hid * 2, 10)
         self.fc_membrane = nn.Linear(n_hid * 2, 1)  # Membrane-bound classifier (binary)
         self.drop_hid = nn.Dropout(drop_hid)
 
@@ -95,6 +91,5 @@ class DeepLocModel(nn.Module):
         # Membrane-bound vs soluble prediction (binary classifier)
         membrane_out = torch.sigmoid(self.fc_membrane(self.drop_hid(last_context))) 
 
-        out = F.relu(self.fc1(self.drop_hid(last_context)))
-        out = self.fc2(self.drop_hid(out))
+        out = self.output_layer(last_context)  # Predict localization
         return out, alphas, last_context, membrane_out

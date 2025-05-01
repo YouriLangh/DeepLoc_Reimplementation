@@ -126,14 +126,8 @@ model.eval()
 test_preds = []
 test_labels = []
 membrane_preds = []
-class_names = ['Nucleus', 'Cytoplasm', 'Extracellular', 'Mitochondrion', 'Cell membrane', 'Endoplasmic reticulum', 
-               'Plastid', 'Golgi apparatus', 'Lysosome/Vacuole', 'Peroxisome']
-conf = ConfusionMatrix(num_classes=10, class_names=class_names)
 
-conf_membrane = ConfusionMatrix(num_classes=2, class_names=['Membrane Bound', 'Soluble'])
-# Variables to store metrics
-all_membrane_preds = []
-all_membrane_true = []
+conf = ConfusionMatrix(num_classes=10, class_names=label_columns)
 
 with torch.no_grad():
     for batch in test_loader:
@@ -150,14 +144,10 @@ with torch.no_grad():
         test_preds.extend(predicted.cpu().numpy())
         test_labels.extend(targets.cpu().numpy())
         
-        membrane_pred = (membrane_out > 0.5).float()
-        # Collect membrane predictions and ground truth
-        all_membrane_preds.extend(membrane_pred.cpu().numpy())
-        all_membrane_true.extend(targets.cpu().numpy())  # Assuming the target class for membrane prediction is in the targets
-        
+        # membrane_pred = (membrane_out > 0.5).float()
+
         # Update confusion matrix
         conf.batch_add(targets.cpu().numpy(), predicted.cpu().numpy())
-        conf_membrane.batch_add(targets.cpu().numpy(), membrane_pred.cpu().numpy())
 
 # === Compute and Print Metrics for localization ===
 # Compute confusion matrix and final accuracy
@@ -175,12 +165,4 @@ print(f"F1 per class: {f1}")
 mcc = conf.matthews_correlation()
 print(f"Matthews Correlation Coefficient per class: {mcc}")
 print(f"Overall MCC: {conf.OMCC()}")
-
-
-# === Compute Gorodkin Score ===
-# For Gorodkin score, we will use the true labels and membrane predictions to compute the score
-membrane_true = np.array(all_membrane_true)
-membrane_pred = np.array(all_membrane_preds)
-gorodkin_score = gorodkin((membrane_true, membrane_pred))
-print(f"Gorodkin Score: {gorodkin_score:.4f}")
 

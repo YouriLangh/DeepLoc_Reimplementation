@@ -130,6 +130,8 @@ class ConfusionMatrix:
 		tp, tn, fp, fn = self.get_errors()
 		numerator = tp*tn - fp*fn
 		denominator = np.sqrt((tp + fp)*(tp + fn)*(tn + fp)*(tn + fn))
+		if denominator == 0:
+			return 0
 		res = numerator / denominator
 		res = res[~np.isnan(res)]
 		return res
