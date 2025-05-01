@@ -166,7 +166,7 @@ with torch.no_grad():
         
         # Update confusion matrix
         conf.batch_add(targets.cpu().numpy(), predicted.cpu().numpy())
-        conf_membrance.batch_add(targets.cpu().numpy(), membrane_pred.cpu().numpy())
+        conf_membrane.batch_add(targets.cpu().numpy(), membrane_pred.cpu().numpy())
 
 # === Compute and Print Metrics for localization ===
 # Compute confusion matrix and final accuracy
