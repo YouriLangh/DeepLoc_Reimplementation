@@ -21,7 +21,7 @@ def encode_sequence_with_blosum(seq, matrix_keys, max_len=1000):
 
 # Custom dataset class for DeepLoc
 class DeepLocDataset(Dataset):
-    def __init__(self, df, label_columns, matrix):
+    def __init__(self, df, label_columns):
         self.sequences = df['PaddedSequence'].values # Fetch the processed sequences
         self.masks = df['Mask'].values # Fetch the masks
         self.labels = df[label_columns].values.astype(np.float32) # Convert labels to float32
@@ -37,7 +37,10 @@ class DeepLocDataset(Dataset):
     def __getitem__(self, idx):
         seq = self.sequences[idx]
         mask = self.masks[idx]
-        label = self.labels[idx]
+        label_vector = self.labels[idx]
+
+        # Get index of class (assumes single label per sample)
+        label = int(np.argmax(label_vector))
         encoded_seq = encode_sequence_with_blosum(seq, self.matrix_keys, self.max_len) # Encode the sequence using BLOSUM62
         mask_tensor = torch.tensor([int(m) for m in mask], dtype=torch.float32)
         return torch.tensor(encoded_seq), torch.tensor(label), mask_tensor # Return the encoded sequence, label, and mask tensor

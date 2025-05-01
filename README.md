@@ -15,7 +15,10 @@ pip install -r requirements.txt
 3. Then ensure the data resides in the ./data location.
 
 4. Running the code (uses defaults for the rest)
-   python train.py -i data/train.npz -t data/test.npz
+
+```bash
+python train.py -i data/deeploc2.1_training_processed.csv -t data/deeploc2.1_test_processed.csv
+```
 
 ### Issues encountered
 

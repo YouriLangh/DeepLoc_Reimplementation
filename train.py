@@ -7,7 +7,12 @@ from model import DeepLocModel
 from tqdm import tqdm
 from confusionmatrix import ConfusionMatrix 
 from metrics_mc import gorodkin
-
+from data import DeepLocDataset
+import pandas as pd
+label_columns = [
+    "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane", "Mitochondrion",
+    "Plastid", "Endoplasmic reticulum", "Lysosome/Vacuole", "Golgi apparatus", "Peroxisome"
+]
 
 # === Argument Parsing ===
 parser = argparse.ArgumentParser()
@@ -24,39 +29,25 @@ parser.add_argument('-se', '--seed', help="Seed for random number init., default
 args = parser.parse_args()
 
 # === Check for Data Files ===
-if args.trainset is None or args.testset is None:
+if args.trainset is None:
     parser.print_help()
     exit(1)
 
 # === Load the Data ===
-train_data = np.load(args.trainset)
-test_data = np.load(args.testset)
+train_df = pd.read_csv(args.trainset)
+test_df = pd.read_csv(args.testset)
 
-# As sequences can be variable length, the dataset has to pad certain sequences. But our attention mechanism/ LSTM cell should not learn from padding
-# Mask ensures we know which positions are padding and which are not (1 = not padding, 0 = padding)
-X_train, y_train, mask_train = train_data['X_train'][:50], train_data['y_train'][:50], train_data['mask_train'][:50]
+# === Create custom datasets
+train_dataset = DeepLocDataset(train_df, label_columns)
+test_dataset = DeepLocDataset(test_df, label_columns)
 
-X_test, y_test, mask_test = test_data['X_test'][:50], test_data['y_test'][:50], test_data['mask_test'][:50]
-
-print(f"Training data shape: {X_train.shape}, Labels shape: {y_train.shape}, Mask shape: {mask_train.shape}")
-print(f"Test data shape: {X_test.shape}, Labels shape: {y_test.shape}, Mask shape: {mask_test.shape}")
-
-
-# === Convert to PyTorch Tensors ===
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-y_train_tensor = torch.tensor(y_train, dtype=torch.long)
-mask_train_tensor = torch.tensor(mask_train, dtype=torch.float32)
-
-X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-mask_test_tensor = torch.tensor(mask_test, dtype=torch.float32)
-
-# === Create DataLoader for Batching ===
-train_dataset = TensorDataset(X_train_tensor, y_train_tensor, mask_train_tensor)
+# === Create DataLoaders
 train_loader = DataLoader(train_dataset, batch_size=int(args.batch_size), shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=int(args.batch_size), shuffle=True)
 
-test_dataset = TensorDataset(X_test_tensor, y_test_tensor, mask_test_tensor)
-test_loader = DataLoader(test_dataset, batch_size=int(args.batch_size), shuffle=False)
+# === Set Random Seed ===
+torch.manual_seed(int(args.seed))
+np.random.seed(int(args.seed))
 
 # === Initialize the Model ===
 model = DeepLocModel(n_feat=X_train.shape[2], n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
