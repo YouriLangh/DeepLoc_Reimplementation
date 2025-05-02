@@ -41,8 +41,8 @@ train_df = pd.read_csv(args.trainset)
 test_df = pd.read_csv(args.testset)
 
 # === Create custom datasets
-train_dataset = DeepLocDataset(train_df[:4000], label_columns)
-test_dataset = DeepLocDataset(test_df[:2000], label_columns)
+train_dataset = DeepLocDataset(train_df, label_columns)
+test_dataset = DeepLocDataset(test_df, label_columns)
 
 # === Create DataLoaders
 train_loader = DataLoader(train_dataset, batch_size=int(args.batch_size), shuffle=True)
@@ -140,7 +140,7 @@ print(localization_conf)
 print(f"Localization Accuracy: {loc_tracker.accuracy():.2f}%")
 print(f"Localization F1 per class: {localization_conf.F1()}")
 print(f"Localization MCC per class: {localization_conf.matthews_correlation()}")
-print(f" Sensitivity per class: {localization_conf.sensitivity()}")
+print(f"Sensitivity per class: {localization_conf.sensitivity()}")
 print(f"Localization Overall MCC: {localization_conf.OMCC()}")
 print(f"Gorodkin Score: {gorodkin(localization_conf.mat):.4f}")
 
