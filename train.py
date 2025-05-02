@@ -10,7 +10,7 @@ from confusionmatrix import ConfusionMatrix
 from metrics_mc import gorodkin
 from data import DeepLocDataset
 import pandas as pd
-from utils import run_epoch
+from utils import run_epoch, MetricTracker
 
 label_columns = [
     "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane", "Mitochondrion",
@@ -41,8 +41,8 @@ train_df = pd.read_csv(args.trainset)
 test_df = pd.read_csv(args.testset)
 
 # === Create custom datasets
-train_dataset = DeepLocDataset(train_df, label_columns)
-test_dataset = DeepLocDataset(test_df, label_columns)
+train_dataset = DeepLocDataset(train_df[:4000], label_columns)
+test_dataset = DeepLocDataset(test_df[:2000], label_columns)
 
 # === Create DataLoaders
 train_loader = DataLoader(train_dataset, batch_size=int(args.batch_size), shuffle=True)
@@ -97,46 +97,56 @@ for epoch in range(int(args.epochs)):
 
 # === Final Testing ===
 model.eval()
+mem_tracker = MetricTracker("Membrane")
+loc_tracker = MetricTracker("Localization")
+
+localization_conf = ConfusionMatrix(num_classes=10, class_names=label_columns)
+membrane_conf = ConfusionMatrix(num_classes=2, class_names=["Soluble", "Membrane-bound"])
+
 test_preds = []
 test_labels = []
 membrane_preds = []
 
-conf = ConfusionMatrix(num_classes=10, class_names=label_columns)
-
 with torch.no_grad():
     for batch in test_loader:
         inputs, targets, masks, membrane_types = batch
-        inputs, targets, masks, membrane_types = inputs.to(device), \
-                                      targets.to(device), \
-                                      masks.to(device), \
-                                      membrane_types.to(device)
-        # Forward pass through the model
+        inputs, targets, masks, membrane_types = (
+            inputs.to(device),
+            targets.to(device),
+            masks.to(device),
+            membrane_types.to(device)
+        )
+
+        # Forward pass
         outputs, _, _, membrane_out = model(inputs, masks)
-        
-        # Predict the class and collect predictions for evaluation
-        _, predicted = torch.max(outputs, 1)
-        test_preds.extend(predicted.cpu().numpy())
+
+        # === Localization ===
+        _, loc_pred = torch.max(outputs, 1)
+        loc_tracker.update(loss=torch.tensor(0.0), predictions=loc_pred, targets=targets)
+        localization_conf.batch_add(targets.cpu().numpy(), loc_pred.cpu().numpy())
+        test_preds.extend(loc_pred.cpu().numpy())
         test_labels.extend(targets.cpu().numpy())
-        
-        # membrane_pred = (membrane_out > 0.5).float()
 
-        # Update confusion matrix
-        conf.batch_add(targets.cpu().numpy(), predicted.cpu().numpy())
+        # === Membrane ===
+        mem_pred = (torch.sigmoid(membrane_out) > 0.5).long()
+        actual_mem = membrane_types.long().unsqueeze(1)
+        mem_tracker.update(loss=torch.tensor(0.0), predictions=mem_pred, targets=actual_mem)
+        membrane_conf.batch_add(actual_mem.cpu().numpy(), mem_pred.cpu().numpy())
+        membrane_preds.extend(mem_pred.squeeze().cpu().numpy())
 
-# === Compute and Print Metrics for localization ===
-# Compute confusion matrix and final accuracy
-print("Confusion Matrix:")
-print(conf)
+# === Print Results ===
+print("Localization Confusion Matrix:")
+print(localization_conf)
+print(f"Localization Accuracy: {loc_tracker.accuracy():.2f}%")
+print(f"Localization F1 per class: {localization_conf.F1()}")
+print(f"Localization MCC per class: {localization_conf.matthews_correlation()}")
+print(f" Sensitivity per class: {localization_conf.sensitivity()}")
+print(f"Localization Overall MCC: {localization_conf.OMCC()}")
+print(f"Gorodkin Score: {gorodkin(localization_conf.mat):.4f}")
 
-# Calculate Accuracy
-accuracy = conf.accuracy() * 100
-print(f"Global Accuracy: {accuracy:.2f}%")
-
-# Calculate F1 and MCC
-f1 = conf.F1()
-print(f"F1 per class: {f1}")
-
-mcc = conf.matthews_correlation()
-print(f"Matthews Correlation Coefficient per class: {mcc}")
-print(f"Overall MCC: {conf.OMCC()}")
-
+print("\nMembrane Confusion Matrix:")
+print(membrane_conf)
+print(f"Membrane Accuracy: {mem_tracker.accuracy():.2f}%")
+print(f"Membrane F1 per class: {membrane_conf.F1()}")
+print(f"Membrane MCC per class: {membrane_conf.matthews_correlation()}")
+print(f"Membrane Overall MCC: {membrane_conf.OMCC()}")
