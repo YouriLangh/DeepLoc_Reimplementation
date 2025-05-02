@@ -22,6 +22,7 @@ class DeepLocAttention(nn.Module):
         self.decode_steps = decode_steps
         self.hidden_dim = hidden_dim
 
+
         self.W_align = nn.Linear(hidden_dim, align_dim, bias=False)
         self.U_align = nn.Linear(input_dim, align_dim, bias=False)
         self.v_align = nn.Linear(align_dim, 1, bias=False)
@@ -58,8 +59,11 @@ class DeepLocAttention(nn.Module):
         return alphas, contexts
 
 class DeepLocModel(nn.Module):
-    def __init__(self, n_feat, n_class, n_hid=256, n_filt=10, drop_per=0.2, drop_hid=0.5):
+    def __init__(self, n_feat, n_class, n_hid=256, n_filt=10, drop_per=0.2, drop_hid=0.5, localization_criterion=None, membrane_criterion=None, learning_rate=None):
         super(DeepLocModel, self).__init__()
+        self.localization_criterion = localization_criterion
+        self.membrane_criterion = membrane_criterion
+        self.learning_rate = learning_rate
         self.drop_seq = DropoutSeqPos(drop_per)
 
         self.cnn_layers = nn.ModuleList([
@@ -89,7 +93,7 @@ class DeepLocModel(nn.Module):
         last_context = contexts[:, -1, :]
 
         # Membrane-bound vs soluble prediction (binary classifier)
-        membrane_out = torch.sigmoid(self.fc_membrane(self.drop_hid(last_context))) 
+        membrane_out = self.fc_membrane(self.drop_hid(last_context))
 
         out = self.output_layer(last_context)  # Predict localization
         return out, alphas, last_context, membrane_out

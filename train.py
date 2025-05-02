@@ -1,6 +1,7 @@
 import argparse
 import time
 import torch
+import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 from model import DeepLocModel
@@ -9,6 +10,8 @@ from confusionmatrix import ConfusionMatrix
 from metrics_mc import gorodkin
 from data import DeepLocDataset
 import pandas as pd
+from utils import run_epoch
+
 label_columns = [
     "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane", "Mitochondrion",
     "Plastid", "Endoplasmic reticulum", "Lysosome/Vacuole", "Golgi apparatus", "Peroxisome"
@@ -49,77 +52,48 @@ test_loader = DataLoader(test_dataset, batch_size=int(args.batch_size), shuffle=
 torch.manual_seed(int(args.seed))
 np.random.seed(int(args.seed))
 
-# === Initialize the Model ===
-model = DeepLocModel(n_feat=20, n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
-                     drop_per=float(args.in_dropout), drop_hid=float(args.hid_dropout))
-model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))  # Move model to GPU if available
+# === Initialize Device ===
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # === Define Loss Function and Optimizer ===
-criterion = torch.nn.CrossEntropyLoss()
+localization_criterion = torch.nn.CrossEntropyLoss()
+criterion_membrane = nn.BCEWithLogitsLoss()
+
+# === Initialize the Model ===
+model = DeepLocModel(n_feat=20, n_class=10, n_hid=int(args.n_hid), n_filt=int(args.n_filters),
+                     drop_per=float(args.in_dropout), drop_hid=float(args.hid_dropout), localization_criterion=localization_criterion,
+                     membrane_criterion=criterion_membrane, learning_rate=float(args.learning_rate))
+model.to(device)  # Move model to GPU if available
+
 optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
 
 # === Training Loop ===
 for epoch in range(int(args.epochs)):
-    model.train()
-    running_loss = 0.0
-    correct_preds = 0
-    total_preds = 0
     start_time = time.time()
 
-    # Train on minibatches
-    for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{args.epochs}", unit="batch"):
-        inputs, targets, masks = batch
-        inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                  targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                  masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-
-        optimizer.zero_grad()
-        
-        # Forward pass
-        outputs, attention, context, membrane_out = model(inputs, masks)
-        
-        # Compute loss
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-
-        # Compute accuracy
-        _, predicted = torch.max(outputs, 1)
-        correct_preds += (predicted == targets).sum().item()
-        total_preds += targets.size(0)
-
-    epoch_loss = running_loss / len(train_loader)
-    epoch_acc = correct_preds / total_preds * 100
-
+    # Training
+    loc_tracker, mem_tracker = run_epoch(
+        model, train_loader, device,
+        model.localization_criterion, model.membrane_criterion, optimizer
+    )
+    # === Print Training Results ===
+    print(f"Epoch {epoch + 1}/{args.epochs} - "
+          f"{loc_tracker.name} Loss: {loc_tracker.average_loss(len(train_loader)):.4f}, "
+          f"{loc_tracker.name} Accuracy: {loc_tracker.accuracy():.2f}%, "
+          f"{mem_tracker.name} Loss: {mem_tracker.average_loss(len(train_loader)):.4f}, "
+          f"{mem_tracker.name} Accuracy: {mem_tracker.accuracy():.2f}%")
+    
     # === Validation ===
-    model.eval()
-    val_loss = 0.0
-    val_correct_preds = 0
-    val_total_preds = 0
-    with torch.no_grad():
-        for batch in test_loader:
-            inputs, targets, masks = batch
-            inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                      targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                      masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    val_loc_tracker, val_mem_tracker = run_epoch(
+        model, test_loader, device,
+        model.localization_criterion, model.membrane_criterion
+    )
 
-            outputs, attention, context, membrane_out = model(inputs, masks)
-            loss = criterion(outputs, targets)
-            val_loss += loss.item()
-
-            _, predicted = torch.max(outputs, 1)
-            val_correct_preds += (predicted == targets).sum().item()
-            val_total_preds += targets.size(0)
-
-    val_loss /= len(test_loader)
-    val_acc = val_correct_preds / val_total_preds * 100
-
-    # === Print Epoch Results ===
-    print(f"Training loss: {epoch_loss:.4f}, Training accuracy: {epoch_acc:.2f}%")
-    print(f"Validation loss: {val_loss:.4f}, Validation accuracy: {val_acc:.2f}%")
-    print(f"Epoch time: {time.time() - start_time:.3f}s")
+    print(f"Validation {val_loc_tracker.name} Loss: {val_loc_tracker.average_loss(len(test_loader)):.4f}, "
+          f"{val_loc_tracker.name} Accuracy: {val_loc_tracker.accuracy():.2f}%, "
+          f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
+          f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
+    print(f"Epoch time: {time.time() - start_time:.2f}s")
 
 # === Final Testing ===
 model.eval()
@@ -131,11 +105,11 @@ conf = ConfusionMatrix(num_classes=10, class_names=label_columns)
 
 with torch.no_grad():
     for batch in test_loader:
-        inputs, targets, masks = batch
-        inputs, targets, masks = inputs.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                  targets.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), \
-                                  masks.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-
+        inputs, targets, masks, membrane_types = batch
+        inputs, targets, masks, membrane_types = inputs.to(device), \
+                                      targets.to(device), \
+                                      masks.to(device), \
+                                      membrane_types.to(device)
         # Forward pass through the model
         outputs, _, _, membrane_out = model(inputs, masks)
         
