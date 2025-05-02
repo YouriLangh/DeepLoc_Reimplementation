@@ -128,13 +128,17 @@ class ConfusionMatrix:
 
 	def matthews_correlation(self):
 		tp, tn, fp, fn = self.get_errors()
-		numerator = tp*tn - fp*fn
-		denominator = np.sqrt((tp + fp)*(tp + fn)*(tn + fp)*(tn + fn))
-		if denominator == 0:
-			return 0
-		res = numerator / denominator
-		res = res[~np.isnan(res)]
-		return res
+		numerator = tp * tn - fp * fn
+		denominator = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+
+		# Avoid division by zero: set denominator to 1 where it's 0 to prevent crash
+		with np.errstate(divide='ignore', invalid='ignore'):
+			mcc = np.divide(numerator, denominator)
+			mcc = np.nan_to_num(mcc)  # replace nan/inf with 0
+
+		return mcc
+
+	
 	def OMCC(self):
 		tp, tn, fp, fn = self.get_errors()
 		tp = np.sum(tp)

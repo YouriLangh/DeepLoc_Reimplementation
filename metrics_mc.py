@@ -2,7 +2,7 @@ from __future__ import division
 from itertools import product
 import math
 import numpy as np
-
+import math
 
 def gcsq(z):
     k, n = kn(z)
@@ -21,7 +21,18 @@ def gorodkin(z):
     t2 = sum(np.dot(z[i,:], z[:,j]) for i, j in it(k))
     t3 = sum(np.dot(z[i,:], z.T[:,j]) for i, j in it(k))
     t4 = sum(np.dot(z.T[i,:], z[:,j]) for i, j in it(k))
-    return (n * np.trace(z) - t2) / (math.sqrt(n**2 - t3) * math.sqrt(n**2 - t4))
+
+    numerator = n * np.trace(z) - t2
+    d1 = n**2 - t3
+    d2 = n**2 - t4
+
+    # Protect against negative or zero in sqrt
+    if d1 <= 0 or d2 <= 0:
+        return 0.0
+
+    denominator = math.sqrt(d1) * math.sqrt(d2)
+
+    return numerator / denominator if denominator != 0 else 0.0
 
 def kappa(z):
     N = np.sum(z)
