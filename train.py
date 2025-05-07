@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
 parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
 parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=5) #200 normally
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=20) #200 normally
 parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=10)
 parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0005)
 parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
