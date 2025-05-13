@@ -12,6 +12,7 @@ from data import DeepLocDataset
 import pandas as pd
 from utils import run_epoch, MetricTracker
 import json 
+import csv
 
 label_columns = [
     "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane", "Mitochondrion",
@@ -23,7 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
 parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
 parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=50) #200 normally
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=5) #200 normally
 parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=10)
 parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0009)
 parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
@@ -133,7 +134,7 @@ model.eval()
 mem_tracker = MetricTracker("Membrane")
 loc_tracker = MetricTracker("Localization")
 
-localization_conf = ConfusionMatrix(num_classes=10, class_names=label_columns)
+localization_conf = ConfusionMatrix(num_classes=10, class_names=label_columns.copy())
 membrane_conf = ConfusionMatrix(num_classes=2, class_names=["Soluble", "Membrane-bound"])
 
 test_preds = []
@@ -213,15 +214,50 @@ np.save("results/attention_labels_sorted.npy", sorted_targets)
 results_summary = {
     "localization": {
         "accuracy": loc_tracker.accuracy(),
-        "MCC_per_class": localization_conf.matthews_correlation().tolist(),
-        "sensitivity_per_class": localization_conf.sensitivity().tolist(),
         "gorodkin": gorodkin(localization_conf.mat)
     },
     "membrane": {
         "accuracy": mem_tracker.accuracy(),
-        "overall_MCC": membrane_conf.OMCC()
+        "overall_MCC": membrane_conf.OMCC()[0]
     }
 }
 
 with open("results/final_metrics.json", "w") as f:
     json.dump(results_summary, f, indent=4)
+
+
+# === Save Localization Matrix with MCC and Sensitivity ===
+loc_matrix = localization_conf.ret_mat()
+mcc_per_class = localization_conf.matthews_correlation()
+sensitivity_per_class = localization_conf.sensitivity()
+
+loc_output_path = "results/localization_confusion_matrix.csv"
+with open(loc_output_path, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    header = ["True\\Pred"] + label_columns + ["Total", "MCC", "Sensitivity"]
+    writer.writerow(header)
+
+    for i, row in enumerate(loc_matrix):
+        total = sum(row)
+        row_data = [label_columns[i]] + row.tolist() + [total, f"{mcc_per_class[i]:.4f}", f"{sensitivity_per_class[i]:.4f}"]
+        writer.writerow(row_data)
+
+    # Add column totals at the bottom
+    col_totals = loc_matrix.sum(axis=0)
+    writer.writerow(["Total"] + col_totals.tolist() + ["", "", ""])
+
+print(f"Localization matrix saved to: {loc_output_path}")
+
+# === Save Membrane Matrix ===
+mem_matrix = membrane_conf.ret_mat()
+mem_output_path = "results/membrane_confusion_matrix.csv"
+with open(mem_output_path, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(["True\\Pred", "Soluble", "Membrane-bound", "Total"])
+    for i, row in enumerate(mem_matrix):
+        writer.writerow([["Soluble", "Membrane-bound"][i]] + row.tolist() + [sum(row)])
+    writer.writerow(["Total"] + mem_matrix.sum(axis=0).tolist() + [""])
+
+print(f"Membrane matrix saved to: {mem_output_path}")
+
+print("Class names", label_columns)

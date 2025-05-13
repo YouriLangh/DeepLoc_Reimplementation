@@ -1,0 +1,12 @@
+True\Pred,Cytoplasm,Nucleus,Extracellular,Cell membrane,Mitochondrion,Plastid,Endoplasmic reticulum,Lysosome/Vacuole,Golgi apparatus,Peroxisome,Total,MCC,Sensitivity
+Cytoplasm,458,357,18,15,12,0,2,0,0,0,862,-0.4974,0.1474
+Nucleus,367,795,9,25,9,0,2,0,0,0,1207,-0.2629,0.2346
+Extracellular,20,17,477,26,2,0,0,0,0,0,542,-0.4220,0.1192
+Cell membrane,39,27,28,374,2,0,4,0,0,0,474,-0.5779,0.0989
+Mitochondrion,151,25,26,19,209,0,3,0,0,0,433,-0.2959,0.0532
+Plastid,75,14,9,15,88,0,0,0,0,0,201,0.0000,0.0000
+Endoplasmic reticulum,10,4,75,174,2,0,12,0,0,0,277,-0.1498,0.0030
+Lysosome/Vacuole,38,14,22,67,0,0,0,0,0,0,141,0.0000,0.0000
+Golgi apparatus,18,8,15,43,0,0,3,0,0,0,87,0.0000,0.0000
+Peroxisome,38,1,0,3,2,0,0,0,0,0,44,0.0000,0.0000
+Total,1214,1262,679,761,326,0,26,0,0,0,,,
