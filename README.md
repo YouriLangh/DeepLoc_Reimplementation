@@ -16,8 +16,14 @@ pip install -r requirements.txt
 
 4. Running the code (uses defaults for the rest)
 
+> Note: This is the training command, do not use.
+
 ```bash
 python train.py -i data/deeploc2.1_training_processed.csv -t data/deeploc2.1_test_processed.csv
+```
+
+```bash
+python train.py -i data/deeploc2.1_training_processed.csv -t data/deeploc2.1_test_processed.csv --load_model results/final_model.pth --eval_only
 ```
 
 ### Issues encountered
