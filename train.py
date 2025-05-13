@@ -11,6 +11,7 @@ from metrics_mc import gorodkin
 from data import DeepLocDataset
 import pandas as pd
 from utils import run_epoch, MetricTracker
+import json 
 
 label_columns = [
     "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane", "Mitochondrion",
@@ -22,13 +23,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
 parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
 parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=20) #200 normally
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=50) #200 normally
 parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=10)
-parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0005)
+parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0009)
 parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
 parser.add_argument('-hd', '--hid_dropout', help="Hidden layers dropout, default = 0.5", default=0.5)
 parser.add_argument('-hn', '--n_hid', help="Number of hidden units, default = 256", default=256)
 parser.add_argument('-se', '--seed', help="Seed for random number init., default = 123456", default=123456)
+parser.add_argument('--load_model', help="Path to saved model weights (.pth) to load", default=None)
+parser.add_argument('--eval_only', action='store_true', help="Only evaluate the model, skip training")
+
 args = parser.parse_args()
 
 # === Check for Data Files ===
@@ -65,35 +69,64 @@ model = DeepLocModel(n_feat=20, n_class=10, n_hid=int(args.n_hid), n_filt=int(ar
                      membrane_criterion=criterion_membrane, learning_rate=float(args.learning_rate))
 model.to(device)  # Move model to GPU if available
 
+if args.load_model:
+    print(f"Loading pretrained weights from {args.load_model}")
+    model.load_state_dict(torch.load(args.load_model, map_location=device))
+
+
 optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
 
+# === Logging ===
+train_logs = []
+val_logs = []
+
+
 # === Training Loop ===
-for epoch in range(int(args.epochs)):
-    start_time = time.time()
+if not (args.eval_only or args.load_model):
+    for epoch in range(int(args.epochs)):
+        start_time = time.time()
 
-    # Training
-    loc_tracker, mem_tracker = run_epoch(
-        model, train_loader, device,
-        model.localization_criterion, model.membrane_criterion, optimizer
-    )
-    # === Print Training Results ===
-    print(f"Epoch {epoch + 1}/{args.epochs} - "
-          f"{loc_tracker.name} Loss: {loc_tracker.average_loss(len(train_loader)):.4f}, "
-          f"{loc_tracker.name} Accuracy: {loc_tracker.accuracy():.2f}%, "
-          f"{mem_tracker.name} Loss: {mem_tracker.average_loss(len(train_loader)):.4f}, "
-          f"{mem_tracker.name} Accuracy: {mem_tracker.accuracy():.2f}%")
-    
-    # === Validation ===
-    val_loc_tracker, val_mem_tracker = run_epoch(
-        model, test_loader, device,
-        model.localization_criterion, model.membrane_criterion
-    )
+        # Training
+        loc_tracker, mem_tracker = run_epoch(
+            model, train_loader, device,
+            model.localization_criterion, model.membrane_criterion, optimizer
+        )
+        # === Print Training Results ===
+        print(f"Epoch {epoch + 1}/{args.epochs} - "
+            f"{loc_tracker.name} Loss: {loc_tracker.average_loss(len(train_loader)):.4f}, "
+            f"{loc_tracker.name} Accuracy: {loc_tracker.accuracy():.2f}%, "
+            f"{mem_tracker.name} Loss: {mem_tracker.average_loss(len(train_loader)):.4f}, "
+            f"{mem_tracker.name} Accuracy: {mem_tracker.accuracy():.2f}%")
+        
+        # === Validation ===
+        val_loc_tracker, val_mem_tracker = run_epoch(
+            model, test_loader, device,
+            model.localization_criterion, model.membrane_criterion
+        )
 
-    print(f"Validation {val_loc_tracker.name} Loss: {val_loc_tracker.average_loss(len(test_loader)):.4f}, "
-          f"{val_loc_tracker.name} Accuracy: {val_loc_tracker.accuracy():.2f}%, "
-          f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
-          f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
-    print(f"Epoch time: {time.time() - start_time:.2f}s")
+
+        print(f"Validation {val_loc_tracker.name} Loss: {val_loc_tracker.average_loss(len(test_loader)):.4f}, "
+            f"{val_loc_tracker.name} Accuracy: {val_loc_tracker.accuracy():.2f}%, "
+            f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
+            f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
+        print(f"Epoch time: {time.time() - start_time:.2f}s")
+        train_logs.append({
+            "epoch": epoch + 1,
+            "loc_loss": loc_tracker.average_loss(len(train_loader)),
+            "loc_acc": loc_tracker.accuracy(),
+            "mem_loss": mem_tracker.average_loss(len(train_loader)),
+            "mem_acc": mem_tracker.accuracy(),
+        })
+
+        val_logs.append({
+            "epoch": epoch + 1,
+            "val_loc_loss": val_loc_tracker.average_loss(len(test_loader)),
+            "val_loc_acc": val_loc_tracker.accuracy(),
+            "val_mem_loss": val_mem_tracker.average_loss(len(test_loader)),
+            "val_mem_acc": val_mem_tracker.accuracy(),
+        })
+    pd.DataFrame(train_logs).to_csv("results/train_metrics.csv", index=False)
+    pd.DataFrame(val_logs).to_csv("results/val_metrics.csv", index=False)
 
 # === Final Testing ===
 model.eval()
@@ -107,6 +140,10 @@ test_preds = []
 test_labels = []
 membrane_preds = []
 
+
+all_alphas = []
+all_targets = []
+
 with torch.no_grad():
     for batch in test_loader:
         inputs, targets, masks, membrane_types = batch
@@ -118,7 +155,11 @@ with torch.no_grad():
         )
 
         # Forward pass
-        outputs, _, _, membrane_out = model(inputs, masks)
+        outputs, alphas, _, membrane_out = model(inputs, masks)
+        alphas_1 = alphas[:, 1, :]  # Get the attention slice from decoding step 1 (as per the original code in their notebook)
+
+        all_alphas.append(alphas_1.cpu())  # detach and move to CPU
+        all_targets.append(targets.cpu())
 
         # === Localization ===
         _, loc_pred = torch.max(outputs, 1)
@@ -150,3 +191,37 @@ print(f"Membrane Accuracy: {mem_tracker.accuracy():.2f}%")
 print(f"Membrane F1 per class: {membrane_conf.F1()}")
 print(f"Membrane MCC per class: {membrane_conf.matthews_correlation()}")
 print(f"Membrane Overall MCC: {membrane_conf.OMCC()}")
+
+# === Save Model ===
+if not (args.eval_only or args.load_model):
+    torch.save(model.state_dict(), "results/final_model.pth")
+
+# === Save Attention Weights ===
+all_alphas = torch.cat(all_alphas, dim=0).numpy()    
+all_targets = torch.cat(all_targets, dim=0).numpy()  
+
+# Sort by label (like in DeepLoc 1.0)
+sort_idx = np.argsort(all_targets)
+sorted_alphas = all_alphas[sort_idx]
+sorted_targets = all_targets[sort_idx]
+
+# Save to .npy for reloading later
+np.save("results/attention_step1_sorted.npy", sorted_alphas)
+np.save("results/attention_labels_sorted.npy", sorted_targets)
+
+# === Save Results ===
+results_summary = {
+    "localization": {
+        "accuracy": loc_tracker.accuracy(),
+        "MCC_per_class": localization_conf.matthews_correlation().tolist(),
+        "sensitivity_per_class": localization_conf.sensitivity().tolist(),
+        "gorodkin": gorodkin(localization_conf.mat)
+    },
+    "membrane": {
+        "accuracy": mem_tracker.accuracy(),
+        "overall_MCC": membrane_conf.OMCC()
+    }
+}
+
+with open("results/final_metrics.json", "w") as f:
+    json.dump(results_summary, f, indent=4)
