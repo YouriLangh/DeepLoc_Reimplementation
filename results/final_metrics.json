@@ -1,10 +1,10 @@
 {
     "localization": {
-        "accuracy": 54.47516401124649,
-        "gorodkin": 0.44445583220626
+        "accuracy": 67.83036551077788,
+        "gorodkin": 0.6113113794743559
     },
     "membrane": {
-        "accuracy": 89.0112464854733,
+        "accuracy": 88.3552014995314,
         "overall_MCC": 0.0
     }
 }
