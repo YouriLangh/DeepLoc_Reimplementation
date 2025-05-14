@@ -59,7 +59,7 @@ class DeepLocAttention(nn.Module):
         return alphas, contexts
 
 class DeepLocModel(nn.Module):
-    def __init__(self, n_feat, n_class, n_hid=256, n_filt=10, drop_per=0.2, drop_hid=0.5, localization_criterion=None, membrane_criterion=None, learning_rate=None):
+    def __init__(self, n_feat, n_class=10, n_hid=256, n_filt=10, drop_per=0.2, drop_hid=0.5, localization_criterion=None, membrane_criterion=None, learning_rate=None):
         super(DeepLocModel, self).__init__()
         self.localization_criterion = localization_criterion
         self.membrane_criterion = membrane_criterion
@@ -70,12 +70,12 @@ class DeepLocModel(nn.Module):
             nn.Conv1d(n_feat, n_filt, kernel_size=k, padding=k // 2)
             for k in [1, 3, 5, 9, 15, 21]
         ]) # Different filters as stated in paper
-        self.cnn_out = nn.Conv1d(n_filt * 6, 64, kernel_size=3, padding=1) # Reduce dimensionality
+        self.cnn_out = nn.Conv1d(n_filt * 6, 128, kernel_size=3, padding=1) # Reduce dimensionality
 
-        self.blstm = nn.LSTM(64, n_hid, bidirectional=True, batch_first=True)
+        self.blstm = nn.LSTM(128, n_hid, bidirectional=True, batch_first=True)
         self.attention = DeepLocAttention(n_hid * 2, n_hid * 2, n_hid, decode_steps=10)
         # Correction: DeepLoc 1.0 uses the tree only to explain predictions, not to make them.
-        self.output_layer = nn.Linear(n_hid * 2, 10)
+        self.output_layer = nn.Linear(n_hid * 2, n_class)
         self.fc_membrane = nn.Linear(n_hid * 2, 1)  # Membrane-bound classifier (binary)
         self.drop_hid = nn.Dropout(drop_hid)
 

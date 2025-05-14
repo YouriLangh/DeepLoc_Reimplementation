@@ -24,15 +24,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
 parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
 parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=100) #200 normally
-parser.add_argument('-n', '--n_filters', help="Number of filters, default = 20", default=20)
-parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0009)
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=30) #200 normally
+parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=20)
+parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.0005)
 parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
-parser.add_argument('-hd', '--hid_dropout', help="Hidden layers dropout, default = 0.5", default=0.4)
+parser.add_argument('-hd', '--hid_dropout', help="Hidden layers dropout, default = 0.5", default=0.5)
 parser.add_argument('-hn', '--n_hid', help="Number of hidden units, default = 256", default=256)
 parser.add_argument('-se', '--seed', help="Seed for random number init., default = 123456", default=123456)
 parser.add_argument('--load_model', help="Path to saved model weights (.pth) to load", default=None)
 parser.add_argument('--eval_only', action='store_true', help="Only evaluate the model, skip training")
+parser.add_argument('-v', '--data_version', help="Which dataset version is used to evaluate the model?", default="DeepLoc1.0")
 
 args = parser.parse_args()
 
@@ -78,8 +79,7 @@ if args.load_model:
 optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
 
 # === Logging ===
-train_logs = []
-val_logs = []
+train_val_logs = []
 
 
 # === Training Loop ===
@@ -111,23 +111,19 @@ if not (args.eval_only or args.load_model):
             f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
             f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
         print(f"Epoch time: {time.time() - start_time:.2f}s")
-        train_logs.append({
+        train_val_logs.append({
             "epoch": epoch + 1,
             "loc_loss": loc_tracker.average_loss(len(train_loader)),
             "loc_acc": loc_tracker.accuracy(),
             "mem_loss": mem_tracker.average_loss(len(train_loader)),
             "mem_acc": mem_tracker.accuracy(),
-        })
-
-        val_logs.append({
-            "epoch": epoch + 1,
             "val_loc_loss": val_loc_tracker.average_loss(len(test_loader)),
             "val_loc_acc": val_loc_tracker.accuracy(),
             "val_mem_loss": val_mem_tracker.average_loss(len(test_loader)),
             "val_mem_acc": val_mem_tracker.accuracy(),
         })
-    pd.DataFrame(train_logs).to_csv("results/train_metrics.csv", index=False)
-    pd.DataFrame(val_logs).to_csv("results/val_metrics.csv", index=False)
+
+    pd.DataFrame(train_val_logs).to_csv("results/" + args.data_version + "train_val_metrics.csv", index=False)
 
 # === Final Testing ===
 model.eval()
@@ -195,7 +191,7 @@ print(f"Membrane Overall MCC: {membrane_conf.OMCC()}")
 
 # === Save Model ===
 if not (args.eval_only or args.load_model):
-    torch.save(model.state_dict(), "results/final_model.pth")
+    torch.save(model.state_dict(), "results/" + args.data_version + "/final_model.pth")
 
 # === Save Attention Weights ===
 all_alphas = torch.cat(all_alphas, dim=0).numpy()    
@@ -207,8 +203,8 @@ sorted_alphas = all_alphas[sort_idx]
 sorted_targets = all_targets[sort_idx]
 
 # Save to .npy for reloading later
-np.save("results/attention_step1_sorted.npy", sorted_alphas)
-np.save("results/attention_labels_sorted.npy", sorted_targets)
+np.save("results/" + args.data_version + "/attention_step1_sorted.npy", sorted_alphas)
+np.save("results/" + args.data_version + "/attention_labels_sorted.npy", sorted_targets)
 
 # === Save Results ===
 results_summary = {
@@ -222,7 +218,7 @@ results_summary = {
     }
 }
 
-with open("results/final_metrics.json", "w") as f:
+with open("results/" + args.data_version + "/final_metrics.json", "w") as f:
     json.dump(results_summary, f, indent=4)
 
 
@@ -231,7 +227,7 @@ loc_matrix = localization_conf.ret_mat()
 mcc_per_class = localization_conf.matthews_correlation()
 sensitivity_per_class = localization_conf.sensitivity()
 
-loc_output_path = "results/localization_confusion_matrix.csv"
+loc_output_path = "results/" + args.data_version + "/localization_confusion_matrix.csv"
 with open(loc_output_path, mode='w', newline='') as file:
     writer = csv.writer(file)
     header = ["True\\Pred"] + label_columns + ["Total", "MCC", "Sensitivity"]
@@ -250,7 +246,7 @@ print(f"Localization matrix saved to: {loc_output_path}")
 
 # === Save Membrane Matrix ===
 mem_matrix = membrane_conf.ret_mat()
-mem_output_path = "results/membrane_confusion_matrix.csv"
+mem_output_path = "results/" + args.data_version + "/membrane_confusion_matrix.csv"
 with open(mem_output_path, mode='w', newline='') as file:
     writer = csv.writer(file)
     writer.writerow(["True\\Pred", "Soluble", "Membrane-bound", "Total"])
@@ -259,5 +255,3 @@ with open(mem_output_path, mode='w', newline='') as file:
     writer.writerow(["Total"] + mem_matrix.sum(axis=0).tolist() + [""])
 
 print(f"Membrane matrix saved to: {mem_output_path}")
-
-print("Class names", label_columns)
