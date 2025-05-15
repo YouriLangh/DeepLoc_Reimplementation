@@ -76,7 +76,13 @@ if args.load_model:
     model.load_state_dict(torch.load(args.load_model, map_location=device))
 
 
-optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
+# optimizer = torch.optim.Adam(model.parameters(), lr=float(args.learning_rate))
+optimizer = torch.optim.SGD(
+    model.parameters(),
+    lr=float(args.learning_rate),
+    momentum=0.9,        
+    weight_decay=1e-4    
+)
 
 # === Logging ===
 train_val_logs = []
@@ -99,17 +105,17 @@ if not (args.eval_only or args.load_model):
             f"{mem_tracker.name} Loss: {mem_tracker.average_loss(len(train_loader)):.4f}, "
             f"{mem_tracker.name} Accuracy: {mem_tracker.accuracy():.2f}%")
         
-        # === Validation ===
-        val_loc_tracker, val_mem_tracker = run_epoch(
-            model, test_loader, device,
-            model.localization_criterion, model.membrane_criterion
-        )
+        # # === Validation ===
+        # val_loc_tracker, val_mem_tracker = run_epoch(
+        #     model, test_loader, device,
+        #     model.localization_criterion, model.membrane_criterion
+        # )
 
 
-        print(f"Validation {val_loc_tracker.name} Loss: {val_loc_tracker.average_loss(len(test_loader)):.4f}, "
-            f"{val_loc_tracker.name} Accuracy: {val_loc_tracker.accuracy():.2f}%, "
-            f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
-            f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
+        # print(f"Validation {val_loc_tracker.name} Loss: {val_loc_tracker.average_loss(len(test_loader)):.4f}, "
+        #     f"{val_loc_tracker.name} Accuracy: {val_loc_tracker.accuracy():.2f}%, "
+        #     f"{val_mem_tracker.name} Loss: {val_mem_tracker.average_loss(len(test_loader)):.4f}, "
+        #     f"{val_mem_tracker.name} Accuracy: {val_mem_tracker.accuracy():.2f}%")
         print(f"Epoch time: {time.time() - start_time:.2f}s")
         train_val_logs.append({
             "epoch": epoch + 1,
@@ -117,10 +123,10 @@ if not (args.eval_only or args.load_model):
             "loc_acc": loc_tracker.accuracy(),
             "mem_loss": mem_tracker.average_loss(len(train_loader)),
             "mem_acc": mem_tracker.accuracy(),
-            "val_loc_loss": val_loc_tracker.average_loss(len(test_loader)),
-            "val_loc_acc": val_loc_tracker.accuracy(),
-            "val_mem_loss": val_mem_tracker.average_loss(len(test_loader)),
-            "val_mem_acc": val_mem_tracker.accuracy(),
+            # "val_loc_loss": val_loc_tracker.average_loss(len(test_loader)),
+            # "val_loc_acc": val_loc_tracker.accuracy(),
+            # "val_mem_loss": val_mem_tracker.average_loss(len(test_loader)),
+            # "val_mem_acc": val_mem_tracker.accuracy(),
         })
 
     pd.DataFrame(train_val_logs).to_csv("results/" + args.data_version + "train_val_metrics.csv", index=False)
