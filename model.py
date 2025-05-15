@@ -15,6 +15,9 @@ class DropoutSeqPos(nn.Module):
         mask = (torch.rand(x.size(0), x.size(1), device=x.device) > self.p).float() #generates a random mask for sequence if training
         return x * mask.unsqueeze(-1)
 
+# Inspired by BahdanauAttention, but multi-step & LSTM added as shown in the DeepLoc codebase.
+# https://docs.pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html Sourced on 9/4/2025 by Youri Langhendries
+# https://medium.com/@yashwanths_29644/deep-learning-series-15-understanding-bahdanau-attention-and-luong-attention-773216197d1f Sourced on 11/4/2025 by Youri Langhendries
 ### Attention mechanism: Focus on the most relevant parts of the sequence
 class DeepLocAttention(nn.Module):
     def __init__(self, input_dim, hidden_dim, align_dim, decode_steps):
@@ -29,31 +32,31 @@ class DeepLocAttention(nn.Module):
 
         self.lstm_cell = nn.LSTMCell(input_dim, hidden_dim)
 
-    def forward(self, encoded, mask):
+    def forward(self, encoded, mask): # encoded is the output of the BLSTM, mask indicateds which positions are valid 
         batch_size, seq_len, feat_dim = encoded.size()
         device = encoded.device
 
-        h_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Attention weights
-        c_t = torch.zeros(batch_size, self.hidden_dim).to(device)
+        h_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Hidden state, start with 0
+        c_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Cell state, start with 0
 
-        alpha_list = []
+        weights_list = []
         context_list = []
 
-        U_align_out = self.U_align(encoded)
+        U_align_out = self.U_align(encoded) # Prep the input sequence for attention mechanism
 
-        for _ in range(self.decode_steps):
-            W_align_out = self.W_align(h_t).unsqueeze(1)
+        for _ in range(self.decode_steps): # Run for multiple steps, as per DeepLoc paper
+            W_align_out = self.W_align(h_t).unsqueeze(1) # Expand the hidden state to match the input sequence length
             scores = self.v_align(torch.tanh(W_align_out + U_align_out)).squeeze(-1) # Scores for each position
 
-            scores = scores.masked_fill(mask == 0, float('-inf'))
-            alpha = torch.softmax(scores, dim=1) # how much attention should be given to each position
-            context = torch.sum(encoded * alpha.unsqueeze(-1), dim=1) # Use attention weights to get weighted context vector 
+            scores = scores.masked_fill(mask == 0, float('-inf')) # Mask invalid positions
+            weights = torch.softmax(scores, dim=1) # how much attention should be given to each position
+            context = torch.sum(encoded * weights.unsqueeze(-1), dim=1) # Use attention weights & input to get importance/context vector 
 
-            h_t, c_t = self.lstm_cell(context, (h_t, c_t)) # Pass the context vector to the LSTM cell
-            alpha_list.append(alpha)
-            context_list.append(context)
+            h_t, c_t = self.lstm_cell(context, (h_t, c_t)) # Pass the context vector to the LSTM cell, update hidden state
+            weights_list.append(weights) # Store weights 
+            context_list.append(context) # Store context vectors
 
-        alphas = torch.stack(alpha_list, dim=1) # Attention weights
+        alphas = torch.stack(weights_list, dim=1) # Attention weights
         contexts = torch.stack(context_list, dim=1)
 
         return alphas, contexts

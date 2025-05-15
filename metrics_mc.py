@@ -2,7 +2,6 @@ from __future__ import division
 from itertools import product
 import math
 import numpy as np
-import math
 
 def gcsq(z):
     k, n = kn(z)
