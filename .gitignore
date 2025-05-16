@@ -1,1 +1,4 @@
 *.pyc
+deeploc1.0*.csv
+deeploc2.1_test_processed.csv
+deeploc2.1_training_processed.csv

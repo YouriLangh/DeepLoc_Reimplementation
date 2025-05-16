@@ -36,8 +36,8 @@ class DeepLocAttention(nn.Module):
         batch_size, seq_len, feat_dim = encoded.size()
         device = encoded.device
 
-        h_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Hidden state, start with 0
-        c_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Cell state, start with 0
+        h_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Hidden state, start with 0. Carries information to next time step
+        c_t = torch.zeros(batch_size, self.hidden_dim).to(device) # Cell state, start with 0. Retains the long-term dependencies
 
         weights_list = []
         context_list = []
@@ -46,13 +46,13 @@ class DeepLocAttention(nn.Module):
 
         for _ in range(self.decode_steps): # Run for multiple steps, as per DeepLoc paper
             W_align_out = self.W_align(h_t).unsqueeze(1) # Expand the hidden state to match the input sequence length
-            scores = self.v_align(torch.tanh(W_align_out + U_align_out)).squeeze(-1) # Scores for each position
+            scores = self.v_align(torch.tanh(W_align_out + U_align_out)).squeeze(-1) # Scores for each position (Bahdanau attention). What we're looking for vs. input
 
             scores = scores.masked_fill(mask == 0, float('-inf')) # Mask invalid positions
-            weights = torch.softmax(scores, dim=1) # how much attention should be given to each position
-            context = torch.sum(encoded * weights.unsqueeze(-1), dim=1) # Use attention weights & input to get importance/context vector 
+            weights = torch.softmax(scores, dim=1) # Convert raw scores to attention weights [0,1] for each position
+            context = torch.sum(encoded * weights.unsqueeze(-1), dim=1) # Use attention weights & input to get importance/context (of each position) = vector
 
-            h_t, c_t = self.lstm_cell(context, (h_t, c_t)) # Pass the context vector to the LSTM cell, update hidden state
+            h_t, c_t = self.lstm_cell(context, (h_t, c_t)) # Pass the context vector to the LSTM cell & the previous state.
             weights_list.append(weights) # Store weights 
             context_list.append(context) # Store context vectors
 
@@ -98,5 +98,5 @@ class DeepLocModel(nn.Module):
         # Membrane-bound vs soluble prediction (binary classifier)
         membrane_out = self.fc_membrane(self.drop_hid(last_context))
 
-        out = self.output_layer(last_context)  # Predict localization
+        out = self.output_layer(self.drop_hid(last_context))  # Predict localization
         return out, alphas, last_context, membrane_out

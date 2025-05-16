@@ -56,7 +56,7 @@ def run_epoch(model, dataloader, device, localization_criterion, membrane_criter
 
         # Membrane
         loss_mem = membrane_criterion(membrane_out, membrane_types.float().unsqueeze(1))
-        mem_pred = (torch.sigmoid(membrane_out) > 0.5).long()
+        mem_pred = (torch.sigmoid(membrane_out) > 0.5).long() # Convert logits to probabilities
         mem_tracker.update(loss_mem, mem_pred, membrane_types.long().unsqueeze(1))
 
         # Backward + optimize
