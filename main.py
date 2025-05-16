@@ -24,7 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--trainset', help="npz file with training profiles data")
 parser.add_argument('-t', '--testset', help="npz file with test profiles data to calculate final accuracy")
 parser.add_argument('-bs', '--batch_size', help="Minibatch size, default = 128", default=128)
-parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=30) #200 normally
+parser.add_argument('-e', '--epochs', help="Number of training epochs, default = 5", default=50) #200 normally
 parser.add_argument('-n', '--n_filters', help="Number of filters, default = 10", default=20)
 parser.add_argument('-lr', '--learning_rate', help="Learning rate, default = 0.0005", default=0.001)
 parser.add_argument('-id', '--in_dropout', help="Input dropout, default = 0.2", default=0.2)
@@ -129,7 +129,7 @@ if not (args.eval_only or args.load_model):
             # "val_mem_acc": val_mem_tracker.accuracy(),
         })
 
-    pd.DataFrame(train_val_logs).to_csv("results/" + args.data_version + "train_val_metrics.csv", index=False)
+    pd.DataFrame(train_val_logs).to_csv("results/" + args.data_version + "/train_metrics.csv", index=False)
 
 # === Final Testing ===
 model.eval()
@@ -197,7 +197,7 @@ print(f"Membrane Overall MCC: {membrane_conf.OMCC()}")
 
 # === Save Model ===
 if not (args.eval_only or args.load_model):
-    torch.save(model.state_dict(), "results/" + args.data_version + "/final_model.pth")
+    torch.save(model.state_dict(), "results/" + args.data_version + "/trained_model_params.pth")
 
 # === Save Attention Weights ===
 all_alphas = torch.cat(all_alphas, dim=0).numpy()    
@@ -209,7 +209,7 @@ sorted_alphas = all_alphas[sort_idx]
 sorted_targets = all_targets[sort_idx]
 
 # Save to .npy for reloading later
-np.save("results/" + args.data_version + "/attention_step1_sorted.npy", sorted_alphas)
+np.save("results/" + args.data_version + "/attention_weights_sorted.npy", sorted_alphas)
 np.save("results/" + args.data_version + "/attention_labels_sorted.npy", sorted_targets)
 
 # === Save Results ===

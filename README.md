@@ -16,7 +16,7 @@ The original DeepLoc 1.0 model was implemented using deprecated libraries (Thean
 - Switched from SGD to the Adam optimizer for better convergence and stability.
 - Limited input encoding to BLOSUM62 profiles due to computational constraints.
 - Retained duplicate sequences to remain consistent with the original dataset distribution.
-- We also extended the evaluation to the DeepLoc 2.0 dataset, treating the provided validation set as the test set after filtering for single-label sequences.
+- We also extended the evaluation to the DeepLoc 2.0 dataset (only training/validation set dataset), treating the provided validation set as the test set after filtering for single-label sequences.
 
 ---
 
@@ -92,4 +92,4 @@ python main.py -i data/DeepLoc2.0/deeploc2.1_training_processed.csv -t data/Deep
 
 `attention_visualization.ipynb`: Notebook to visualize attention weights per sequence in test set.
 
-`results_visualization.ipynb`: Notebook to visualize the learning curve for the model.
+`results_visualization.ipynb`: Notebook to visualize the learning curve & loss curve for the model.

@@ -2,3 +2,10 @@
 deeploc1.0*.csv
 deeploc2.1_test_processed.csv
 deeploc2.1_training_processed.csv
+# Ignore everything in results/DeepLoc1.0 and DeepLoc2.0
+results/DeepLoc1.0/*
+results/DeepLoc2.0/*
+
+# But don't ignore .pth files in those folders
+!results/DeepLoc1.0/*.pth
+!results/DeepLoc2.0/*.pth
