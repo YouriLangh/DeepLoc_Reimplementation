@@ -54,7 +54,7 @@ python main.py -i data/DeepLoc1.0/deeploc1.0-train.csv -t data/DeepLoc1.0/deeplo
 Evaluate with saved model for DeepLoc 1.0 dataset:
 
 ```bash
-python main.py -i data/DeepLoc1.0/deeploc1.0-train.csv -t data/DeepLoc1.0/deeploc1.0-test.csv --load_model results/DeepLoc1.0/final_model.pth --eval_only -v DeepLoc1.0
+python main.py -i data/DeepLoc1.0/deeploc1.0-train.csv -t data/DeepLoc1.0/deeploc1.0-test.csv --load_model results/DeepLoc1.0/trained_model_params.pth --eval_only -v DeepLoc1.0
 ```
 
 **DeepLoc 2.0:**
@@ -67,7 +67,7 @@ python main.py -i data/DeepLoc2.0/deeploc2.1_training_processed.csv -t data/Deep
 Evaluate with saved model for DeepLoc 2.0 dataset:
 
 ```bash
-python main.py -i data/DeepLoc2.0/deeploc2.1_training_processed.csv -t data/DeepLoc2.0/deeploc2.1_test_processed.csv --load_model results/DeepLoc2.0/final_model.pth --eval_only -v DeepLoc2.0
+python main.py -i data/DeepLoc2.0/deeploc2.1_training_processed.csv -t data/DeepLoc2.0/deeploc2.1_test_processed.csv --load_model results/DeepLoc2.0/trained_model_params.pth --eval_only -v DeepLoc2.0
 ```
 
 ## Project Structure
@@ -93,3 +93,7 @@ python main.py -i data/DeepLoc2.0/deeploc2.1_training_processed.csv -t data/Deep
 `attention_visualization.ipynb`: Notebook to visualize attention weights per sequence in test set.
 
 `results_visualization.ipynb`: Notebook to visualize the learning curve & loss curve for the model.
+
+## Known issues in the code
+
+The code provided by the authors for the confusion matrix, has a significant flaw in the MCC computation. Due to lack of time, we simply calculate this by hand based on the matrix.
